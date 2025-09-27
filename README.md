@@ -1,2 +1,101 @@
 # Mean-Reversion-Strategy
 A very simple strategy where we use the concept of Mean Reversion, that is,whenever the price moves 3.5 standard deviation from 25 Day-moving Average, we either long or short it respectively.
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import yfinance as yf
+
+
+
+data=yf.download('GDX',start="2013-01-01",end="2023-02-28")
+close=pd.DataFrame(data['Close'])
+close
+
+data['Returns']=np.log(data['Close']/data['Close'].shift(1))
+
+
+
+SMA=20
+data['SMA']=close.rolling(SMA).mean()
+
+
+std=3.5
+d=close['GDX']-data['SMA']
+print(d)
+
+
+
+
+d.dropna().plot(figsize=(10,6), legend= True)
+plt.axhline(std,color='r')
+plt.axhline(-std,color='r')
+plt.axhline(0,color='r')
+
+
+
+
+data['position']=np.where(d>std,-1,np.nan)
+data['position']=np.where(d<(-std),1,data['position'])
+data['position']=np.where(d*d.shift(1)<0,0,data['position'])
+
+data['position']=data['position'].ffill().fillna(0)
+
+print(data['position'])
+
+SMA=20
+data['position'].iloc[SMA:].plot(ylim=[-1.1,1.1],figsize=(10,6))
+
+data['strategy']=data['position'].shift(1)*data['Returns']
+data['strategy']
+
+data[['Returns','strategy']].dropna().cumsum().apply(np.exp).plot(figsize=(10,6))
+
+initial_investment = 1000
+
+# Calculate cumulative returns (growth factor)
+cumulative_growth = data['strategy'].dropna().cumsum().apply(np.exp)
+print(cumulative_growth)
+
+# Calculate portfolio value over time by multiplying by initial investment
+portfolio_value = initial_investment * cumulative_growth
+for idx,x in np.ndenumerate(portfolio_value):
+    print(idx,x)
+
+# Plot portfolio value
+portfolio_value.plot(figsize=(10,6), title='Strategy Portfolio Value Over Time')
+plt.ylabel('Portfolio Value ($)')
+plt.show()
+
+
+# Shifted position to detect entries (compare current vs previous)
+data['position_shift'] = data['position'].shift(1)
+
+# Entry points: when position changes from 0 to 1 or -1
+entry_longs = (data['position'] == 1) & (data['position_shift'] == 0)
+entry_shorts = (data['position'] == -1) & (data['position_shift'] == 0)
+
+# Plot the GDX price
+plt.figure(figsize=(14, 6))
+plt.plot(data['Close'], label='GDX Price', color='blue')
+
+# Plot entry points
+plt.scatter(data.index[entry_longs], data['Close'][entry_longs], marker='^', color='green', label='Long Entry', s=100)
+plt.scatter(data.index[entry_shorts], data['Close'][entry_shorts], marker='v', color='red', label='Short Entry', s=100)
+
+
+# Exit points: when position goes back to 0
+exit_points = (data['position'] == 0) & (data['position_shift'] != 0)
+
+# Plot exits as yellow dots
+plt.scatter(data.index[exit_points], data['Close'][exit_points], marker='*', color='yellow', label='Exit', s=100)
+
+
+plt.title('GDX Price with Strategy Entry Points')
+plt.xlabel('Date')
+plt.ylabel('Price ($)')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
